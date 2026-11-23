@@ -1,6 +1,0 @@
-[python-vcert]
-name=python-vcert RPMs for EL9 x86_64
-baseurl=https://techzilla.github.io/python-vcert/el9/$basearch/
-enabled=1
-gpgcheck=0
-repo_gpgcheck=0

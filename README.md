@@ -1,58 +1,46 @@
-# python-vcert: RHEL 9 RPM packaging
+# python3-vcert for Red Hat Enterprise Linux 9
 
-Third-party packaging for [CyberArk/Venafi vcert-python](https://github.com/Venafi/vcert-python). This repository builds an RPM named `python3-vcert` for the **default RHEL 9 Python 3.9** on **x86_64**.
+This project builds a **conventional source-built, noarch RPM** of upstream
+[Venafi/vcert-python](https://github.com/Venafi/vcert-python), version **0.15.0**.
+Build and test containers use **Red Hat UBI 9** (not AlmaLinux).
+The package uses the default Python 3.9 and **does not bundle Python libraries**.
 
-Upstream version: **0.23.0**. No alternate interpreter, `pip install`, or virtual environment is required on the target host.
+## Compatibility and dependencies
 
-## Install
+Upstream vcert 0.15.0 was selected because it pinned cryptography 36.0.1, the
+version family provided by RHEL 9. Other upstream dependency pins are relaxed
+in `%prep` to use distro-maintained RPM packages. This is a downstream
+compatibility change: correctness requires the clean UBI 9 test to pass.
 
-After the [GitHub Pages DNF repository](https://techzilla.github.io/python-vcert/python-vcert.repo) has been deployed:
+System packages: python3-requests, python3-dateutil, python3-six,
+python3-cryptography, python3-ruamel-yaml, python3-pynacl, python3-future.
 
-```bash
-sudo curl -fsSL https://techzilla.github.io/python-vcert/python-vcert.repo \
-  -o /etc/yum.repos.d/python-vcert.repo
-sudo dnf install python3-vcert
-python3 -c 'import vcert; print(vcert.__file__)'
+**Additional repositories required:** CodeReady Builder (for ruamel.yaml) and
+EPEL 9 (for PyNaCl and future). This package is therefore **not installable
+using BaseOS/AppStream alone**. No pip or venv is used on the target.
+
+The packaging verifies that the old upstream certvalidator dependency is not
+imported from source. If that check fails, the build intentionally stops
+rather than publishing an RPM missing a runtime dependency.
+
+The package does not include newer VCert features released after 0.15.0.
+
+## CI, building and publishing
+
+GitHub Actions builds an RPM and SRPM in `registry.access.redhat.com/ubi9/ubi`,
+then installs the binary RPM on a fresh UBI 9 image. This workflow is the
+compatibility gate; do not tag a release until it passes.
+
+Local reproduction (requires Docker):
+
+```sh
+docker run --rm -v "$PWD:/work" -w /work registry.access.redhat.com/ubi9/ubi:latest bash scripts/build-rpm.sh
+docker run --rm -v "$PWD:/work" -w /work registry.access.redhat.com/ubi9/ubi:latest bash scripts/test-rpm.sh
 ```
 
-Alternatively install the RPM directly from the [Releases](https://github.com/techzilla/python-vcert/releases) page with `sudo dnf install ./python3-vcert-*.el9.x86_64.rpm`.
+Once a build passes, tag `v0.15.0` to publish both RPM and SRPM to GitHub
+Releases and generate a DNF repository through GitHub Pages. Select
+**Settings → Pages → GitHub Actions** to activate Pages.
 
-**The RPM is currently unsigned**; the sample DNF repo uses `gpgcheck=0`. For managed production deployments, sign packages, distribute the signing key and enable GPG verification.
-
-## Why a bundled RPM?
-
-VCert 0.23.0 requires newer Python modules than RHEL 9 normally ships, notably `cryptography >=48.0.1`. This build bundles Python dependencies under `vcert/_vendor`, leaves RHEL-managed Python modules untouched, and adds the private path **when vcert is imported**. It does not modify the default Python interpreter.
-
-This technique has a limitation: after importing `vcert`, the process may resolve common modules such as `requests` and `cryptography` from the bundled versions. Applications that pre-import incompatible system versions may still encounter a conflict. Test integrations that mix vcert with other Python frameworks. A dedicated virtual environment is preferable for strict isolation.
-
-## Build and test
-
-The workflow builds and tests against **AlmaLinux 9**, a RHEL 9-compatible distribution. It has **not** been certified on subscription-protected RHEL 9, or validated for RHEL FIPS mode.
-
-To reproduce locally with Docker:
-
-```bash
-docker run --rm -v "$PWD:/work" -w /work almalinux:9 bash scripts/build-rpm.sh
-docker run --rm -v "$PWD:/work" -w /work almalinux:9 bash scripts/test-rpm.sh
-```
-
-The build downloads wheels from PyPI in a temporary isolated environment; no internet access is needed during `rpmbuild`. The build records the downloaded wheel hashes in the RPM documentation. Versions of direct requirements are pinned in `packaging/requirements.txt`; transitive versions are resolver-selected.
-
-## Publishing
-
-1. Push changes or dispatch the workflow to build and smoke-test an RPM. Passing builds are retained as workflow artifacts.
-2. Push a tag that matches the VCert version, such as `v0.23.0`. The workflow creates a GitHub Release and attaches the tested RPM.
-3. In repository **Settings → Pages**, select **GitHub Actions** as the Pages build source. The same tag workflow deploys a DNF repository to GitHub Pages.
-
-Repository directory: `el9/x86_64/`. The Pages repository currently contains the latest tagged RPM; older packages remain available through GitHub Releases. To publish a new upstream VCert release, update `packaging/requirements.txt`, the RPM spec `Version`, and the release tag together.
-
-## Files
-
-- `packaging/python3-vcert.spec`: RPM spec.
-- `packaging/requirements.txt`: upstream and direct dependency versions.
-- `scripts/build-rpm.sh`: downloads wheels, builds a bundled source archive and produces the RPM.
-- `scripts/test-rpm.sh`: clean AlmaLinux 9 installation smoke test.
-- `scripts/make-repo.sh`: generates DNF repository metadata for GitHub Pages.
-- `.github/workflows/rpm.yml`: CI, releases, and optional Pages deployment.
-
-VCert is licensed under Apache-2.0 by its upstream authors. This repository is an independent packaging project and is not endorsed by CyberArk.
+The RPM remains unsigned until a signing key is configured. Do not use the
+unsigned repository for production distribution without establishing trust.
