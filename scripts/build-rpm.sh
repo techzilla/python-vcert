@@ -9,7 +9,7 @@ fi
 
 dnf -y --setopt=install_weak_deps=False install \
   python3 python3-pip python3-rpm-macros rpm-build \
-  tar gzip findutils coreutils curl
+  tar gzip findutils
 
 version="$(sed -n 's/^vcert==//p' packaging/requirements.txt)"
 spec_version="$(sed -n 's/^Version:[[:space:]]*//p' packaging/python3-vcert.spec)"
