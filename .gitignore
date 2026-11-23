@@ -1,0 +1,6 @@
+dist/
+public/
+*.rpm
+*.src.rpm
+__pycache__/
+*.pyc
