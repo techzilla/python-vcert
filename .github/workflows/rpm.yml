@@ -1,0 +1,71 @@
+name: Build and publish EL9 RPM
+
+on:
+  push:
+    branches: [main]
+    tags: ['v[0-9]*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rpm:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build RPM in AlmaLinux 9
+        run: docker run --rm -v "$PWD:/work" -w /work almalinux:9 bash scripts/build-rpm.sh
+      - name: Test DNF installation in a clean AlmaLinux 9
+        run: docker run --rm -v "$PWD:/work" -w /work almalinux:9 bash scripts/test-rpm.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python3-vcert-el9-x86_64
+          path: dist/*.rpm
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: rpm
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: python3-vcert-el9-x86_64
+          path: dist
+      - name: Verify tag and publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(sed -n 's/^vcert==//p' packaging/requirements.txt)"
+          test "$GITHUB_REF_NAME" = "v$version"
+          gh release create "$GITHUB_REF_NAME" dist/*.rpm \
+            --verify-tag --title "python3-vcert $version for EL9" --generate-notes
+
+  pages:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: rpm
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: python3-vcert-el9-x86_64
+          path: dist
+      - name: Build DNF metadata
+        run: docker run --rm -v "$PWD:/work" -w /work almalinux:9 bash scripts/make-repo.sh
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+      - uses: actions/deploy-pages@v4
+        id: deployment
